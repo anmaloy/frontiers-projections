@@ -35,6 +35,9 @@ class FinancialModel:
         # Initialize empty DataFrames for numeric and financial data
         self.numeric_results = pd.DataFrame(columns=['Category', 'Subcategory'] + self.years)
         self.financial_results = pd.DataFrame(columns=['Category', 'Subcategory'] + self.years)
+        self.income_statement = pd.DataFrame(columns=['Category', 'Subcategory'] + self.years)
+        self.cash_flow_forecast = pd.DataFrame(columns=['Category', 'Subcategory'] + self.years)
+        self.balance_sheet = pd.DataFrame(columns=['Category', 'Subcategory'] + self.years)
 
         pd.options.mode.chained_assignment = None  # Suppress warnings related to chained assignments
         warnings.simplefilter(action='ignore', category=pd.errors.PerformanceWarning)
@@ -118,6 +121,9 @@ class FinancialModel:
             total_profit = self.compute_profit(year)
             self.financial_results = self.insert_data(total_profit, year_col, self.financial_results)
 
+        # Generates financial data sheets
+        self.generate_income_statement()
+        self.generate_cash_flow_forecast()
 
         # Save results
         self.numeric_results.to_csv('model-projections-numeric.csv', index=False)
@@ -1359,6 +1365,128 @@ class FinancialModel:
             'Subcategory': ['Median', 'High', 'Low'],
             year_col: [round(profit_median), round(profit_high), round(profit_low)]
         })
+
+    def generate_cash_flow_forecast(self):
+        """
+        Generate a structured 10-year cash flow forecast using median financial projections.
+
+        This function extracts revenue, expense, and profit values from the internal `financial_results` DataFrame,
+        computes taxes at a flat rate of 35%, and derives net cash flow and ending balances over 10 years.
+        It aggregates revenue and equity inputs under 'Cash Inflows', and expenses, taxes, and capital expenditures
+        under 'Cash Outflows'. All results are stored in `self.cash_flow_forecast` and exported to CSV.
+        """
+        years = [f"Year {i}" for i in range(1, 11)]
+
+        # Opening cash and financial inflows (manually configured)
+        opening_cash = 0
+        financial_inflows = []  # Example: [(1, 10000000), (3, 20000000)]
+        inflow_map = {f"Year {y}": amount for y, amount in financial_inflows}
+
+        # Extract rows
+        revenue_row = self.financial_results[
+            (self.financial_results["Category"] == "Total Income") &
+            (self.financial_results["Subcategory"] == "Median")
+            ]
+
+        expense_row = self.financial_results[
+            (self.financial_results["Category"] == "Total Expense") &
+            (self.financial_results["Subcategory"] == "Median")
+            ]
+
+        profit_row = self.financial_results[
+            (self.financial_results["Category"] == "Total Profit") &
+            (self.financial_results["Subcategory"] == "Median")
+            ]
+
+        revenue = revenue_row[years].values[0]
+        expense = expense_row[years].values[0]
+        profit = profit_row[years].values[0]
+        taxes = [round(p * 0.35, 0) for p in profit]
+        net_flow = [r - e - t for r, e, t in zip(revenue, expense, taxes)]
+        equity = [inflow_map.get(y, 0.0) for y in years]
+        opening = [opening_cash] + [None] * 9
+        ending = []
+
+        for i in range(10):
+            prev = opening[i] if i == 0 else ending[i - 1]
+            cash = prev + net_flow[i] + equity[i]
+            ending.append(cash)
+            if i < 9:
+                opening[i + 1] = cash
+
+        cash_inflows = [revenue[i] + equity[i] for i in range(10)]
+        cash_outflows = [expense[i] + taxes[i] for i in range(10)]
+        capex = [0] * 10  # Placeholder only
+
+        df = pd.DataFrame([
+            ["Opening Cash", *opening],
+            ["Cash Inflows", *cash_inflows],
+            ["Revenue", *revenue],
+            ["Equity/Grants Raised", *equity],
+            ["Cash Outflows", *cash_outflows],
+            ["Operating Expenses", *expense],
+            ["Capital Expenditures", *capex],
+            ["Taxes Paid", *taxes],
+            ["Net Cash Flow", *net_flow],
+            ["Ending Cash", *ending]
+        ], columns=["Category"] + years)
+
+        self.cash_flow_forecast = df
+        df.to_csv("cash-flow-forecast.csv", index=False)
+
+    def generate_income_statement(self):
+        """
+        Generate a structured 10-year income statement using median financial projections.
+
+        This function extracts relevant rows from the internal `financial_results` DataFrame,
+        specifically for revenue and expense categories such as Memberships, Grants, Mentorship,
+        Infrastructure, Marketing, and overall Totals. It estimates corporate tax using a flat rate
+        and computes Net Income accordingly.
+
+        The resulting table is stored as `self.income_statement` and includes rows for:
+        - Total Income (Revenue)
+        - Expense breakdowns
+        - Operating Profit
+        - Taxes (estimated at 35%)
+        - Net Income
+        """
+        years = [f"Year {i}" for i in range(1, 11)]
+
+        # Extract the relevant rows
+        valid_categories = [
+            "Memberships", "Grants", "Total Income",
+            "Mentorship", "Infrastructure", "Marketing",
+            "Total Expense", "Total Profit"
+        ]
+
+        # Filter just 'Total Median' rows from those categories
+        df = self.financial_results[
+            (self.financial_results["Subcategory"] == "Total Median") &
+            (self.financial_results["Category"].isin(valid_categories))
+            ]
+
+        # Also include 'Total Income', 'Total Expense', 'Total Profit' regardless of subcategory label
+        df_total = self.financial_results[
+            (self.financial_results["Category"].isin(["Total Income", "Total Expense", "Total Profit"])) &
+            (self.financial_results["Subcategory"] == "Median")
+            ]
+
+        # Combine and set index
+        df_combined = pd.concat([df, df_total], ignore_index=True)
+        df_combined = df_combined.drop_duplicates(subset=["Category"], keep="last")
+        pi = df_combined.set_index("Category")[years]
+
+        # Estimate taxes and net income
+        tax_rate = 0.35
+        profit = pi.loc["Total Profit"]
+        taxes = profit.apply(lambda x: round(x * tax_rate, 0) if pd.notnull(x) else None)
+        net_income = profit - taxes
+
+        pi.loc["Taxes (est. 35%)"] = taxes
+        pi.loc["Net Income"] = net_income
+
+        self.income_statement = pi
+        self.income_statement.to_csv("income-statement.csv", index=False)
 
     def map_percentile_to_price(self, mean_price, std_price, low, high, p_low, p_high):
         """
