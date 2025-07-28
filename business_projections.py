@@ -9,8 +9,8 @@ class FrontiersFinance:
 
         self.plot = False
 
-        self.df_financial = pd.read_csv('model-projections-financial.csv')
-        self.df_numeric = pd.read_csv('model-projections-numeric.csv')
+        self.df_financial = pd.read_csv('models/model-projections-financial.csv')
+        self.df_numeric = pd.read_csv('models/model-projections-numeric.csv')
 
         # Extract number of participating schools
         self.num_schools = self.initialize("Members", "Total", True)
