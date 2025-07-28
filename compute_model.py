@@ -1476,10 +1476,10 @@ class FinancialModel:
             return row[years].values[0] if not row.empty else [0] * 10
 
         memberships = extract_revenue("Memberships")
-        sponsorships = extract_revenue("Sponsorship Income")
+        sponsorships = extract_revenue("Sponsorships")
         grants = extract_revenue("Grants")
-        licensing = extract_revenue("Licensing Income")
-        ventures = extract_revenue("Venture Income")
+        licensing = extract_revenue("Licensing")
+        ventures = extract_revenue("Ventures")
 
         # Operating expenses
         def extract_expense(cat):
@@ -1492,7 +1492,7 @@ class FinancialModel:
         salaries = extract_expense("Salaries")
         mentorship = extract_expense("Mentorship")
         marketing = extract_expense("Marketing")
-        events = extract_expense("Event Expenses")
+        events = extract_expense("Events")
 
         operating_expenses = [
             s + m + mk + e
