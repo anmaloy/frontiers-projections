@@ -54,6 +54,9 @@ class FinancialModel:
         The results are saved to CSV files:
         - 'model-projections-numeric.csv'
         - 'model-projections-financial.csv'
+        - 'cash-flow-forecast.csv'
+        - 'balance-sheet-forecast.csv'
+        - 'income-statement.csv'
         """
         for year in range(1, 11):
             year_col = f'Year {year}'

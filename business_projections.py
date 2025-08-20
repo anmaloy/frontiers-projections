@@ -35,6 +35,11 @@ class FrontiersFinance:
         self.revenue_advanced = self.initialize("Memberships", "Advanced")
         self.revenue_premium = self.initialize("Memberships", "Premium")
 
+        # Institution counts by tier (from numeric model)
+        self.members_basic = self.initialize("Members", "Basic", True)
+        self.members_advanced = self.initialize("Members", "Advanced", True)
+        self.members_premium = self.initialize("Members", "Premium", True)
+
         # Aggregated revenue categories
         self.revenue_memberships = self.initialize("Memberships", "Total Median")
         self.revenue_sponsorships = self.initialize("Sponsorships", "Total Median")
@@ -354,39 +359,105 @@ class FrontiersFinance:
         self.save_plot("growth_rate")
 
     def plot_membership_tiers(self):
-        """Line chart for total membership revenue with stacked bar chart for tier proportions."""
-        basic_tier = self.revenue_basic
-        advanced_tier = self.revenue_advanced
-        premium_tier = self.revenue_premium
+        """
+        For each year, draw two stacked bars:
+          - Left bar: revenue by tier (¥M) [left y-axis]
+          - Right bar: member counts by tier (schools) [right y-axis]
+        Plus two lines:
+          - Total revenue (left y-axis)
+          - Total member count (right y-axis)
+        """
 
-        fig, ax1 = plt.subplots(figsize=(10, 6))
+        # Revenue data (¥M)
+        rev_basic = self.revenue_basic
+        rev_adv = self.revenue_advanced
+        rev_prem = self.revenue_premium
+        rev_total = self.revenue_memberships
 
-        # Line chart for total membership revenue
-        ax1.plot(self.years, self.revenue_memberships, marker='o', linestyle='-', color=self.colors["Membership Revenue"],
-                 label="Total Membership Revenue")
-        ax1.set_xlabel("Year")
-        ax1.set_ylabel("Total Membership Revenue (¥M)", color=self.colors["Membership Revenue"])
-        ax1.tick_params(axis='y', labelcolor=self.colors["Membership Revenue"])
-        ax1.set_ylim(0, max(self.revenue_memberships) * 1.1)  # Scale dynamically
+        # Member counts (schools)
+        mem_basic = self.members_basic
+        mem_adv = self.members_advanced
+        mem_prem = self.members_premium
+        mem_total = [b + a + p for b, a, p in zip(mem_basic, mem_adv, mem_prem)]
 
-        # Secondary axis for tier contributions, ensuring exact same scaling
-        ax2 = ax1.twinx()
-        ax2.bar(self.years, basic_tier, label="Basic", alpha=0.6, color=self.colors["Basic Membership"])
-        ax2.bar(self.years, advanced_tier, bottom=basic_tier, label="Advanced", alpha=0.6,
-                color=self.colors["Advanced Membership"])
-        ax2.bar(self.years, premium_tier, bottom=basic_tier + advanced_tier, label="Premium", alpha=0.6,
-                color=self.colors["Premium Membership"])
+        # Layout
+        x = np.arange(len(self.years))
+        bar_width = 0.35
+        offset = bar_width / 2
 
-        ax2.set_ylabel("Tier Proportion (¥M)", color=self.colors["Membership Revenue"])
-        ax2.tick_params(axis='y', labelcolor=self.colors["Membership Revenue"])
-        ax2.set_ylim(ax1.get_ylim())  # Ensure same scaling
+        fig, ax_rev = plt.subplots(figsize=(12, 6))
+        ax_cnt = ax_rev.twinx()
 
-        # Labels and title
-        ax1.set_title("Membership Revenue and Tier Contribution")
-        ax2.legend(loc="upper left")
-        plt.xticks(self.years)
-        plt.grid(True, axis='y')
+        # Left stacked bar (revenue) at x - offset
+        rev_x = x - offset
+        ax_rev.bar(
+            rev_x, rev_basic, width=bar_width,
+            color=self.colors.get("Basic Membership"), alpha=0.85,
+            label="Basic Revenue (¥M)"
+        )
+        ax_rev.bar(
+            rev_x, rev_adv, width=bar_width, bottom=rev_basic,
+            color=self.colors.get("Advanced Membership"), alpha=0.85,
+            label="Advanced Revenue (¥M)"
+        )
+        ax_rev.bar(
+            rev_x, rev_prem, width=bar_width, bottom=[b + a for b, a in zip(rev_basic, rev_adv)],
+            color=self.colors.get("Premium Membership"), alpha=0.85,
+            label="Premium Revenue (¥M)"
+        )
 
+        # Right stacked bar (counts) at x + offset
+        cnt_x = x + offset
+        ax_cnt.bar(
+            cnt_x, mem_basic, width=bar_width,
+            color=self.colors.get("Basic Membership"), alpha=0.45,
+            label="Basic (schools)"
+        )
+        ax_cnt.bar(
+            cnt_x, mem_adv, width=bar_width, bottom=mem_basic,
+            color=self.colors.get("Advanced Membership"), alpha=0.45,
+            label="Advanced (schools)"
+        )
+        ax_cnt.bar(
+            cnt_x, mem_prem, width=bar_width, bottom=[b + a for b, a in zip(mem_basic, mem_adv)],
+            color=self.colors.get("Premium Membership"), alpha=0.45,
+            label="Premium (schools)"
+        )
+
+        # Lines: totals
+        ax_rev.plot(
+            rev_x, rev_total, marker="o", linestyle="-",
+            color=self.colors.get("Membership Revenue", "C0"),
+            label="Total Membership Revenue (¥M)"
+        )
+        ax_cnt.plot(
+            cnt_x, mem_total, marker="o", linestyle="-",
+            color=self.colors.get("Total Members", "C1"),
+            label="Total Member Institutions"
+        )
+
+        # Axis labels, limits, grid
+        ax_rev.set_xlabel("Year")
+        ax_rev.set_ylabel("Revenue (¥M)")
+        ax_cnt.set_ylabel("Member Institutions (count)")
+
+        ax_rev.set_ylim(0, max((rev_basic + rev_adv + rev_prem).max(), rev_total.max()) * 1.15)
+        ax_cnt.set_ylim(0, max(mem_total) * 1.2)
+
+        ax_rev.set_xticks(
+            x,
+            labels=[f"Year {int(y)}" if isinstance(y, (int, np.integer)) else str(y) for y in self.years]
+        )
+        ax_rev.grid(True, axis="y", linestyle="--", alpha=0.35)
+
+        ax_rev.set_title("Membership Revenue (¥M) and Member Counts by Tier")
+
+        # Combined legend
+        h1, l1 = ax_rev.get_legend_handles_labels()
+        h2, l2 = ax_cnt.get_legend_handles_labels()
+        ax_rev.legend(h1 + h2, l1 + l2, loc="upper left", ncol=2, frameon=False)
+
+        fig.tight_layout()
         if self.plot:
             plt.show()
         self.save_plot("membership_tiers")
@@ -636,7 +707,7 @@ class FrontiersFinance:
 
         plt.xlabel("Year")
         plt.ylabel("Revenue (¥M)")
-        plt.title("Sponsorship vs Membership Revenue")
+        plt.title("Partnership vs Membership Revenue")
         plt.legend()
         plt.grid(True)
         plt.xticks(self.years)
